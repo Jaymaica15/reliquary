@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\Relic;
+use App\Entity\User;
 use App\Enum\RelicStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\DBAL\ParameterType;
@@ -19,25 +20,10 @@ class RelicRepository extends ServiceEntityRepository
     {
         parent::__construct($registry, Relic::class);
     }
-    
-    /**
-     * Check if a user has the ROLE_ADMIN role
-     * 
-     * @param object $user The user to check
-     * @return bool True if the user is an admin, false otherwise
-     */
-    private function isAdmin(?object $user): bool
-    {
-        if (!$user) {
-            return false;
-        }
-        
-        return method_exists($user, 'getRoles') && in_array('ROLE_ADMIN', $user->getRoles(), true);
-    }
-    
+
     /**
      * Check if a user can view a specific relic
-     * 
+     *
      * @param Relic $relic The relic to check
      * @param object|null $user The user to check
      * @return bool True if the user can view the relic, false otherwise
@@ -48,24 +34,21 @@ class RelicRepository extends ServiceEntityRepository
         if ($relic->getStatus() === RelicStatus::APPROVED) {
             return true;
         }
-        
-        // Unapproved relics can only be viewed by admins and the creator
-        if ($user) {
-            if ($this->isAdmin($user)) {
-                return true;
-            }
-            
-            if ($relic->getCreator() && $relic->getCreator()->getId() === $user->getId()) {
-                return true;
-            }
+
+        if ($user->isAdmin()) {
+            return true;
         }
-        
+
+        if ($relic->getCreator() && $relic->getCreator()->getId() === $user->getId()) {
+            return true;
+        }
+
         return false;
     }
 
     /**
      * Find relics by status
-     * 
+     *
      * @param RelicStatus $status The status to filter by
      * @return Relic[] Returns an array of Relic objects
      */
@@ -80,7 +63,7 @@ class RelicRepository extends ServiceEntityRepository
 
     /**
      * Find relics within a specified radius of a given location
-     * 
+     *
      * @param float $latitude The latitude of the center point
      * @param float $longitude The longitude of the center point
      * @param float $radiusKm The radius in kilometers
@@ -116,14 +99,14 @@ class RelicRepository extends ServiceEntityRepository
             ->setParameter('maxLat', $maxLat)
             ->setParameter('minLng', $minLng)
             ->setParameter('maxLng', $maxLng);
-            
+
         $this->applyVisibilityRestrictions($user, $qb);
 
         $relics = $qb->getQuery()->getResult();
 
         // Then, filter the results to get only those within the actual radius
         // This is done in PHP to avoid complex SQL calculations
-        return array_filter($relics, function($relic) use ($latitude, $longitude, $radiusKm, $kmPerLatDegree, $kmPerLngDegree) {
+        return array_filter($relics, function ($relic) use ($latitude, $longitude, $radiusKm, $kmPerLatDegree, $kmPerLngDegree) {
             $latDiff = abs($relic->getLatitude() - $latitude);
             $lngDiff = abs($relic->getLongitude() - $longitude);
 
@@ -139,7 +122,7 @@ class RelicRepository extends ServiceEntityRepository
 
     /**
      * Find all relics query with optional degree filter and visibility restrictions
-     * 
+     *
      * @param string|null $degree The degree to filter by
      * @param object|null $user The current user
      * @return Query The query object
@@ -154,14 +137,14 @@ class RelicRepository extends ServiceEntityRepository
                 ->setParameter('degree', $degree);
         }
 
-        $this->applyUserFiltersToQuery($user, $queryBuilder);
+        $this->applyVisibilityRestrictions($user, $queryBuilder);
 
         return $queryBuilder->getQuery();
     }
 
     /**
      * Find relics created by a specific user with optional degree filter
-     * 
+     *
      * @param object $user The user who created the relics
      * @param string|null $degree The degree to filter by
      * @return Query The query object
@@ -183,23 +166,23 @@ class RelicRepository extends ServiceEntityRepository
 
     /**
      * Find all relics with visibility restrictions
-     * 
+     *
      * @param object|null $user The current user
      * @return Relic[] Returns an array of Relic objects
      */
     public function findAllWithVisibility(?object $user = null): array
     {
         $queryBuilder = $this->createQueryBuilder('r');
-        
+
         // Apply visibility restrictions
         $this->applyVisibilityRestrictions($user, $queryBuilder);
-        
+
         return $queryBuilder->getQuery()->getResult();
     }
-    
+
     /**
      * Find relics by saint with visibility restrictions
-     * 
+     *
      * @param int $saintId The saint ID
      * @param object|null $user The current user
      * @return Relic[] Returns an array of Relic objects
@@ -221,46 +204,22 @@ class RelicRepository extends ServiceEntityRepository
      */
     public function applyVisibilityRestrictions(?object $user, QueryBuilder $queryBuilder): void
     {
-        if ($user) {
-            // If user is not admin, filter unapproved relics
-            if (!$this->isAdmin($user)) {
-                $queryBuilder
-                    ->andWhere('(r.status = :approved_status OR (r.creator = :user AND (r.status = :pending_status OR r.status = :rejected_status)))')
-                    ->setParameter('approved_status', RelicStatus::APPROVED->value, ParameterType::STRING)
-                    ->setParameter('pending_status', RelicStatus::PENDING->value, ParameterType::STRING)
-                    ->setParameter('rejected_status', RelicStatus::REJECTED->value, ParameterType::STRING)
-                    ->setParameter('user', $user);
-            }
-        } else {
-            // For anonymous users, only show approved relics
-            $queryBuilder
-                ->andWhere('r.status = :approved_status')
-                ->setParameter('approved_status', RelicStatus::APPROVED->value, ParameterType::STRING);
+        if ($user?->isAdmin()) {
+            return;
         }
-    }
+        
+        if ($user) {
+            $queryBuilder
+                ->andWhere('(r.status = :approved_status OR (r.creator = :user AND (r.status = :pending_status OR r.status = :rejected_status)))')
+                ->setParameter('approved_status', RelicStatus::APPROVED->value, ParameterType::STRING)
+                ->setParameter('pending_status', RelicStatus::PENDING->value, ParameterType::STRING)
+                ->setParameter('rejected_status', RelicStatus::REJECTED->value, ParameterType::STRING)
+                ->setParameter('user', $user);
+            return;
+        }
 
-    /**
-     * @param object|null $user
-     * @param QueryBuilder $queryBuilder
-     * @return void
-     */
-    public function applyUserFiltersToQuery(?object $user, QueryBuilder $queryBuilder): void
-    {
-        if ($user) {
-            // If user is admin, show all relics
-            if (!$this->isAdmin($user)) {
-                $queryBuilder
-                    ->andWhere('(r.status = :approved_status OR (r.creator = :user AND (r.status = :pending_status OR r.status = :rejected_status)))')
-                    ->setParameter('approved_status', RelicStatus::APPROVED->value, ParameterType::STRING)
-                    ->setParameter('pending_status', RelicStatus::PENDING->value, ParameterType::STRING)
-                    ->setParameter('rejected_status', RelicStatus::REJECTED->value, ParameterType::STRING)
-                    ->setParameter('user', $user);
-            }
-        } else {
-            // For anonymous users, only show approved relics
-            $queryBuilder
-                ->andWhere('r.status = :approved_status')
-                ->setParameter('approved_status', RelicStatus::APPROVED->value, ParameterType::STRING);
-        }
+        $queryBuilder
+            ->andWhere('r.status = :approved_status')
+            ->setParameter('approved_status', RelicStatus::APPROVED->value, ParameterType::STRING);
     }
 }

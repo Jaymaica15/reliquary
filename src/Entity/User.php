@@ -69,6 +69,11 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, ImageOw
         $this->images = new ArrayCollection();
     }
 
+    public function isAdmin(): bool
+    {
+        return method_exists($this, 'getRoles') && in_array('ROLE_ADMIN', $this->getRoles(), true);
+    }
+
     public function getId(): ?int
     {
         return $this->id;

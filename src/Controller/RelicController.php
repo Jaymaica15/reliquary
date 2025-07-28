@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\Relic;
+use App\Entity\Saint;
 use App\Enum\RelicDegree;
 use App\Enum\RelicStatus;
 use App\Form\RelicType;
@@ -237,19 +238,27 @@ final class RelicController extends AbstractController
         return $this->redirectToRoute('app_relic_index', [], Response::HTTP_SEE_OTHER);
     }
 
-    #[Route('/saint/{id}/desktop', name: 'app_saint_relics_desktop', methods: ['GET'])]
-    public function saintRelicsDesktop(int $id, RelicRepository $relicRepository): Response
+    #[Route('/saint/{saint}/desktop', name: 'app_saint_relics_desktop', methods: ['GET'])]
+    public function saintRelicsDesktop(Saint $saint, RelicRepository $relicRepository): Response
     {
+        if (!$saint->isIncomplete()) {
+            throw $this->createNotFoundException('Saint not found');
+        }
+
         return $this->render('relic/_relic_list_desktop.html.twig', [
-            'relics' => $relicRepository->findBySaintWithVisibility($id, $this->getUser()),
+            'relics' => $relicRepository->findBySaintWithVisibility($saint->getId(), $this->getUser()),
         ]);
     }
 
-    #[Route('/saint/{id}/mobile', name: 'app_saint_relics_mobile', methods: ['GET'])]
-    public function saintRelicsMobile(int $id, RelicRepository $relicRepository): Response
+    #[Route('/saint/{saint}/mobile', name: 'app_saint_relics_mobile', methods: ['GET'])]
+    public function saintRelicsMobile(Saint $saint, RelicRepository $relicRepository): Response
     {
+        if (!$saint->isIncomplete()) {
+            throw $this->createNotFoundException('Saint not found');
+        }
+        
         return $this->render('relic/_relic_list_mobile.html.twig', [
-            'relics' => $relicRepository->findBySaintWithVisibility($id, $this->getUser()),
+            'relics' => $relicRepository->findBySaintWithVisibility($saint->getId(), $this->getUser()),
         ]);
     }
 

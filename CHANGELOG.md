@@ -1,3 +1,10 @@
+# [1.38.0](https://github.com/CesarScur/reliquary/compare/v1.37.0...v1.38.0) (2025-07-26)
+
+
+### Features
+
+* **user:** centralize admin role check in User entity and simplify logic ([07a9476](https://github.com/CesarScur/reliquary/commit/07a947604be11221e002e3215756b4229e875538))
+
 # [1.37.0](https://github.com/CesarScur/reliquary/compare/v1.36.0...v1.37.0) (2025-07-26)
 
 
